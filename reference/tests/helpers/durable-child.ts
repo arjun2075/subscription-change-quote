@@ -32,6 +32,14 @@ async function main(): Promise<void> {
     const require = createRequire(import.meta.url);
     const Database = require("better-sqlite3") as any;
     const db = new Database(dbPath);
+    // The connection MUST stay reachable for the life of the
+    // process: `db` is otherwise a main()-local with no reference
+    // once main() returns (only the interval timer remains), and
+    // garbage collection can finalize and CLOSE an unreachable
+    // better-sqlite3 connection — silently releasing the EXCLUSIVE
+    // lock this mode exists to hold (the test27.22b intermittent
+    // flake: whether the lock survived depended on GC timing).
+    (globalThis as Record<string, unknown>).__scqHoldLockDb = db;
     db.exec("BEGIN EXCLUSIVE");
     db.prepare(`INSERT INTO meta (key, value) VALUES ('lock_holder', 'child') ON CONFLICT(key) DO UPDATE SET value='child'`).run();
     writeFileSync(arg3, "locked");
